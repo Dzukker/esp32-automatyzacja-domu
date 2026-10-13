@@ -1,0 +1,23 @@
+# Proste komponenty UI dla Waveshare ESP32-S3-Touch-LCD-7 + LVGL 9.5
+
+## Pliki
+- `ui_components.h` — publiczne funkcje i konfiguracja stylu.
+- `ui_components.cpp` — implementacja komponentów.
+- `main_integration_example.txt` — jak wywołać komponenty z `main.ino`.
+
+## Jak dodać pliki do Arduino IDE
+1. Otwórz swój działający szkic.
+2. W folderze szkicu utwórz `ui_components.h` i `ui_components.cpp`.
+3. Wklej zawartość odpowiednich plików z paczki.
+4. W `main.ino` dodaj `#include "ui_components.h"`.
+5. Zostaw dotychczasową inicjalizację płytki, LCD i adaptera.
+6. Po `screen = lv_screen_active();` utwórz elementy przez `UI::...`.
+
+## Ważne
+- W tym szkielecie używana jest czcionka `lv_font_montserrat_14`.
+  Musi być włączona w konfiguracji LVGL.
+- Współrzędne są w pikselach względem obiektu-rodzica.
+- `createButton()` wymaga zarejestrowanego urządzenia dotykowego, by kliknięcia działały.
+- Wywołuj funkcje tworzące i zmieniające obiekty LVGL w kontekście bezpiecznym dla adaptera.
+  W `setup()` użyj `esp_lv_adapter_lock(-1)` przed tworzeniem elementów i `esp_lv_adapter_unlock()` po nim.
+- `user_data` w `createButton()` jest zarezerwowane na przyszłą rozbudowę; callback dostaje standardowy `lv_event_t*`.

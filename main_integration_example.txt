@@ -1,0 +1,50 @@
+// 1. Na górze main.ino:
+#include "ui_components.h"
+
+// 2. Globalnie, obok pozostałych zmiennych:
+UI::Value temperatureCard;
+UI::Value humidityCard;
+UI::Button refreshButton;
+float demoTemperature = 23.5f;
+
+// 3. Callback przycisku:
+void onRefreshClicked(lv_event_t *event)
+{
+    (void)event;
+    demoTemperature += 0.5f;
+    if (demoTemperature > 30.0f) demoTemperature = 20.0f;
+
+    char text[20];
+    snprintf(text, sizeof(text), "%.1f", demoTemperature);
+
+    // Callback LVGL jest już wykonywany w kontekście LVGL.
+    UI::setValue(temperatureCard, text);
+}
+
+// 4. W istniejącym setup(), po:
+//    screen = lv_screen_active();
+//    i po ustawieniu stylu tła, utwórz UI w sekcji chronionej lockiem:
+temperatureCard = UI::createValueCard(
+    screen, "Temperatura", "23.5", "°C",
+    40, 70, 300, 150
+);
+
+humidityCard = UI::createValueCard(
+    screen, "Wilgotność", "48", "%",
+    370, 70, 300, 150
+);
+
+UI::Style buttonStyle;
+buttonStyle.background = 0x176B87;
+buttonStyle.foreground = 0xFFFFFF;
+buttonStyle.pressed = 0x2389A8;
+buttonStyle.radius = 12;
+buttonStyle.font = &lv_font_montserrat_14;
+
+refreshButton = UI::createButton(
+    screen, "Odśwież", 40, 250, 180, 55,
+    onRefreshClicked, nullptr, buttonStyle
+);
+
+// Nie twórz drugiego lv_screen_active() ani drugiego adaptera.
+// Zachowaj inicjalizację LCD/adaptera z działającego main.ino.

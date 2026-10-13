@@ -4,52 +4,42 @@
 #include <esp_err.h>
 #include <lvgl.h>
 #include "esp_lv_adapter_arduino.h"
-
 #include <assert.h>
+
+#include "ui_components.h"
+
+UI::Value temperatureCard;
+UI::Value humidityCard;
+UI::Button refreshButton;
+float demoTemperature = 23.5f;
 
 using namespace esp_panel::drivers;
 using namespace esp_panel::board;
 
 Board *board = nullptr;
 lv_display_t *disp = nullptr;
+
+// Elementy interfejsu
 lv_obj_t *screen = nullptr;
+lv_obj_t *temp_label = nullptr;
+lv_obj_t *humidity_label = nullptr;
+lv_obj_t *status_label = nullptr;
 
-static uint8_t colorIndex = 0;
+// Przykładowe dane — później podłączymy czujnik
+float temperature = 23.5;
+float humidity = 48.0;
 
-static const uint32_t colors[] = {
-    0xFF0000,  // czerwony
-    0x00FF00,  // zielony
-    0x0000FF,  // niebieski
-    0xFFFFFF,  // biały
-    0x000000,  // czarny
-    0xFFFF00,  // żółty
-    0x00FFFF,  // cyjan
-    0xFF00FF   // magenta
-};
-
-static const uint8_t COLOR_COUNT =
-    sizeof(colors) / sizeof(colors[0]);
-
-// Timer LVGL: zmiana koloru co sekundę
-static void color_timer_cb(lv_timer_t *timer)
-{
-    (void)timer;
-
-    lv_obj_set_style_bg_color(
-        screen,
-        lv_color_hex(colors[colorIndex]),
-        LV_PART_MAIN
-    );
-
-    colorIndex = (colorIndex + 1) % COLOR_COUNT;
-}
+// Deklaracje funkcji
+void updateSensorValues();
+static void sensor_timer_cb(lv_timer_t *timer);
+void createSensorPanel();
 
 void setup()
 {
     Serial.begin(115200);
-    Serial.println("Start testu LCD + LVGL 9.5.0");
+    Serial.println("Start panelu czujnikow");
 
-    // 1. Inicjalizacja płytki
+    // 1. Inicjalizacja plytki
     board = new Board();
 
     if (board == nullptr || !board->init()) {
@@ -57,7 +47,7 @@ void setup()
         while (true) delay(1000);
     }
 
-    // 2. Pobranie sterownika LCD
+    // 2. Pobranie LCD
     LCD *lcd = board->getLCD();
 
     if (lcd == nullptr) {
@@ -65,7 +55,7 @@ void setup()
         while (true) delay(1000);
     }
 
-    // 3. Konfiguracja buforów RGB i ograniczenia tearingu
+    // 3. Konfiguracja buforow RGB
     const esp_lv_adapter_rotation_t rotation =
         ESP_LV_ADAPTER_ROTATE_0;
 
@@ -81,7 +71,6 @@ void setup()
 
     if (lcd_bus->getBasicAttributes().type ==
         ESP_PANEL_BUS_TYPE_RGB) {
-
         lcd->configFrameBufferNumber(framebuffer_count);
 
         static_cast<BusRGB *>(lcd_bus)
@@ -90,10 +79,9 @@ void setup()
             );
     }
 
-    // 4. Uruchomienie urządzeń płytki
     assert(board->begin());
 
-    // 5. Inicjalizacja adaptera LVGL
+    // 4. Inicjalizacja adaptera LVGL
     esp_lv_adapter_config_t adapter_config =
         ESP_LV_ADAPTER_DEFAULT_CONFIG();
 
@@ -103,7 +91,7 @@ void setup()
 
     ESP_ERROR_CHECK(esp_lv_adapter_init(&adapter_config));
 
-    // 6. Rejestracja LCD w LVGL
+    // 5. Rejestracja ekranu
     esp_lv_adapter_display_config_t display_config =
         ESP_LV_ADAPTER_DISPLAY_RGB_DEFAULT_CONFIG(
             lcd,
@@ -117,7 +105,7 @@ void setup()
     disp = esp_lv_adapter_register_display(&display_config);
     assert(disp != nullptr);
 
-    // 7. Rejestracja dotyku
+    // 6. Rejestracja dotyku
     if (board->getTouch() != nullptr) {
         esp_lv_adapter_touch_config_t touch_config =
             ESP_LV_ADAPTER_TOUCH_DEFAULT_CONFIG(
@@ -130,49 +118,154 @@ void setup()
         assert(touch != nullptr);
     }
 
-    // 8. Uruchomienie zadania LVGL
+    // 7. Start zadania LVGL
     ESP_ERROR_CHECK(esp_lv_adapter_start());
 
-    // 9. Utworzenie ekranu i timera
+    // 8. Tworzenie interfejsu
     ESP_ERROR_CHECK(esp_lv_adapter_lock(-1));
 
+    createSensorPanel();
 
-screen = lv_screen_active();
+    // Pierwsza aktualizacja
+    updateSensorValues();
 
-lv_obj_set_style_bg_opa(
-    screen, LV_OPA_COVER, LV_PART_MAIN
-);
-
-lv_obj_set_style_bg_color(
-    screen, lv_color_hex(colors[0]), LV_PART_MAIN
-);
-
-// Utwórz napis
-lv_obj_t *label = lv_label_create(screen);
-
-lv_label_set_text(label, "elo zelo");
-
-lv_obj_set_style_text_color(
-    label, lv_color_hex(0xFFFFFF), LV_PART_MAIN
-);
-
-lv_obj_set_style_text_font(
-    label, &lv_font_montserrat_14, LV_PART_MAIN
-);
-
-// Wyśrodkuj napis
-lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
-
-// Zachowaj miganie kolorów
-lv_timer_create(color_timer_cb, 1000, nullptr);
+    // Aktualizacja co 2 sekundy
+    lv_timer_create(sensor_timer_cb, 2000, nullptr);
 
     esp_lv_adapter_unlock();
 
-    Serial.println("Test kolorow uruchomiony");
+    Serial.println("Panel czujnikow uruchomiony");
 }
 
 void loop()
 {
-    // Adapter producenta sam obsługuje zadanie LVGL.
+    // Adapter producenta obsluguje LVGL.
     delay(1000);
+}
+
+// Tworzenie elementow interfejsu
+void createSensorPanel()
+{
+    screen = lv_screen_active();
+
+    lv_obj_set_style_bg_color(
+        screen, lv_color_hex(0x101820), LV_PART_MAIN
+    );
+    lv_obj_set_style_bg_opa(
+        screen, LV_OPA_COVER, LV_PART_MAIN
+    );
+
+    // Tytul
+    lv_obj_t *title = lv_label_create(screen);
+    lv_label_set_text(title, "PANEL CZUJNIKOW");
+    lv_obj_set_style_text_color(
+        title, lv_color_hex(0xFFFFFF), LV_PART_MAIN
+    );
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 35);
+
+    // Karta temperatury
+    lv_obj_t *temp_card = lv_obj_create(screen);
+    lv_obj_set_size(temp_card, 330, 180);
+    lv_obj_align(temp_card, LV_ALIGN_CENTER, -175, -20);
+    lv_obj_set_style_bg_color(
+        temp_card, lv_color_hex(0x203448), LV_PART_MAIN
+    );
+    lv_obj_set_style_border_width(
+        temp_card, 0, LV_PART_MAIN
+    );
+    lv_obj_set_style_radius(
+        temp_card, 18, LV_PART_MAIN
+    );
+
+    lv_obj_t *temp_title = lv_label_create(temp_card);
+    lv_label_set_text(temp_title, "TEMPERATURA");
+    lv_obj_set_style_text_color(
+        temp_title, lv_color_hex(0xB8DFFF), LV_PART_MAIN
+    );
+    lv_obj_align(temp_title, LV_ALIGN_TOP_MID, 0, 15);
+
+    temp_label = lv_label_create(temp_card);
+    lv_obj_set_style_text_color(
+        temp_label, lv_color_hex(0xFFFFFF), LV_PART_MAIN
+    );
+    lv_obj_set_style_text_font(
+        temp_label, &lv_font_montserrat_30, LV_PART_MAIN
+    );
+    lv_obj_align(temp_label, LV_ALIGN_CENTER, 0, 20);
+
+    // Karta wilgotnosci
+    lv_obj_t *humidity_card = lv_obj_create(screen);
+    lv_obj_set_size(humidity_card, 330, 180);
+    lv_obj_align(humidity_card, LV_ALIGN_CENTER, 175, -20);
+    lv_obj_set_style_bg_color(
+        humidity_card, lv_color_hex(0x203448), LV_PART_MAIN
+    );
+    lv_obj_set_style_border_width(
+        humidity_card, 0, LV_PART_MAIN
+    );
+    lv_obj_set_style_radius(
+        humidity_card, 18, LV_PART_MAIN
+    );
+
+    lv_obj_t *humidity_title = lv_label_create(humidity_card);
+    lv_label_set_text(humidity_title, "WILGOTNOSC");
+    lv_obj_set_style_text_color(
+        humidity_title, lv_color_hex(0x8FFFE0), LV_PART_MAIN
+    );
+    lv_obj_align(humidity_title, LV_ALIGN_TOP_MID, 0, 15);
+
+    humidity_label = lv_label_create(humidity_card);
+    lv_obj_set_style_text_color(
+        humidity_label, lv_color_hex(0xFFFFFF), LV_PART_MAIN
+    );
+    lv_obj_set_style_text_font(
+        humidity_label, &lv_font_montserrat_30, LV_PART_MAIN
+    );
+    lv_obj_align(humidity_label, LV_ALIGN_CENTER, 0, 20);
+
+    // Status danych
+    status_label = lv_label_create(screen);
+    lv_obj_set_style_text_color(
+        status_label, lv_color_hex(0xD0D0D0), LV_PART_MAIN
+    );
+    lv_obj_align(status_label, LV_ALIGN_BOTTOM_MID, 0, -35);
+}
+
+// Aktualizacja wartosci — tutaj pozniej odczytamy prawdziwy czujnik
+void updateSensorValues()
+{
+    // Przykladowe dane testowe
+    temperature += 0.3;
+    if (temperature > 26.0) temperature = 22.0;
+
+    humidity += 1.0;
+    if (humidity > 60.0) humidity = 40.0;
+
+    // Wyswietlenie wartosci
+    char temp_text[32];
+    char humidity_text[32];
+
+    snprintf(temp_text, sizeof(temp_text),
+             "%.1f °C", temperature);
+
+    snprintf(humidity_text, sizeof(humidity_text),
+             "%.1f %%", humidity);
+
+    lv_label_set_text(temp_label, temp_text);
+    lv_label_set_text(humidity_label, humidity_text);
+    lv_label_set_text(
+        status_label, "TRYB TESTOWY - dane przykladowe"
+    );
+
+    Serial.printf(
+        "Temperatura: %.1f C, wilgotnosc: %.1f %%\n",
+        temperature, humidity
+    );
+}
+
+// Callback timera LVGL
+static void sensor_timer_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    updateSensorValues();
 }
