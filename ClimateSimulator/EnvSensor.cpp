@@ -16,8 +16,8 @@ bool EnvSensor::begin() {
 
 EnvironmentData EnvSensor::read() {
   EnvironmentData out;
-  bool shtOk = _sht30.update();
-  bool qmpOk = _qmp6988.update();
+  const bool shtOk = _sht30.update();
+  const bool qmpOk = _qmp6988.update();
 
   if (shtOk && qmpOk) {
     out.temperatureC = _sht30.cTemp;

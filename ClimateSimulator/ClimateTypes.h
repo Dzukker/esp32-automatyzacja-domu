@@ -12,8 +12,15 @@ struct EnvironmentData {
 struct ClimateState {
   float targetTemperatureC = 22.0f;
   float currentTemperatureC = NAN;
-  float temperatureDifferenceC = 0.0f;
-  float coolingPower = 0.0f; // 0.0..1.0
+  float temperatureDifferenceC = NAN;
+  float coolingPower = 0.0f;
 };
 
-enum class InputSource : uint8_t { LOCAL, REMOTE };
+enum class UiMode : uint8_t {
+  MONITOR,
+  SET_TEMPERATURE,
+  SET_DURATION,
+  COOLING,
+  STOP_CONFIRM,
+  COMPLETE
+};

@@ -7,8 +7,12 @@ public:
   void begin();
   void setSensorStatus(bool ok) { _sensorInitOk = ok; }
   void render(const EnvironmentData& env, const ClimateState& state,
-              InputSource source, uint16_t potRaw, bool remoteFresh);
+              float targetC, UiMode mode, uint32_t selectedDurationSeconds,
+              uint32_t remainingSeconds, bool stopChoiceYes);
 private:
   bool _sensorInitOk = false;
-  uint32_t _lastDrawMs = 0;
+  bool _hasDrawn = false;
+  UiMode _lastMode = UiMode::MONITOR;
+  void drawHeader(const char* title);
+  void printDuration(uint32_t seconds, char* out, size_t outSize);
 };
